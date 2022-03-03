@@ -1,27 +1,41 @@
+use std::fmt::{Display, Formatter};
 use std::path::Path;
 
 /// A textual I/O stream.
 #[derive(Debug)]
 pub enum IoStream {
+    /// The stream does not contain valid UTF-8.
     InvalidUtf8,
-    Value(String),
+    /// The text.
+    Text(String),
+}
+
+impl Display for IoStream {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IoStream::InvalidUtf8 => f.write_str("(Invalid UTF-8)"),
+            IoStream::Text(string) => f.write_str(&string),
+        }
+    }
 }
 
 impl From<Result<String, std::string::FromUtf8Error>> for IoStream {
     fn from(result: Result<String, std::string::FromUtf8Error>) -> Self {
         match result {
-            Ok(string) => IoStream::Value(string),
+            Ok(string) => IoStream::Text(string),
             Err(_) => IoStream::InvalidUtf8,
         }
     }
 }
 
 /// A formatting error.
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// The 'rustfmt' tool is missing from the Rust toolchain.
+    #[error("Formatting tool '{0}' not available on toolchain.")]
     ToolMissing(&'static str),
     /// The 'rustfmt' tool terminated with a failure exit code.
+    #[error("Error executing formatting tool (code {code}).\nStdout:\n{stdout}\nStderr:{stderr}")]
     ToolExecutionError {
         /// The exit code.
         code: i32,
@@ -31,16 +45,12 @@ pub enum Error {
         stderr: IoStream,
     },
     /// An I/O error occurred.
-    IoError(std::io::Error),
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
     /// No result code was obtained. This can happen on Unix systems when the process is terminated
     /// by a signal.
+    #[error("No result code received from formatting tool process.")]
     NoResultCode,
-}
-
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Error::IoError(err)
-    }
 }
 
 /// Format a Rust source file.
